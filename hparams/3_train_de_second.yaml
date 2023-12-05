@@ -3,7 +3,7 @@
 # ################################
 
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: !PLACEHOLDER
+seed: 42
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
 output_folder: !ref /result/hubert_ctc_en_then_de/de/<seed>
 test_wer_file: !ref <output_folder>/wer_test.txt
@@ -19,7 +19,7 @@ wav2vec2_hub: facebook/hubert-base-ls960
 wav2vec2_folder: !ref <save_folder>/hubert_checkpoint
 
 # Dataset prep parameters
-data_folder: !PLACEHOLDER # /data/cv-corpus-15.0-2023-09-08/de
+data_folder: /data/cv-corpus-15.0-2023-09-08/de # /data/cv-corpus-15.0-2023-09-08/de
 train_tsv_file: !ref <data_folder>/train.tsv
 dev_tsv_file: !ref <data_folder>/dev.tsv
 test_tsv_file: !ref <data_folder>/test.tsv
