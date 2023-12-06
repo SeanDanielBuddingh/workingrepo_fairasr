@@ -392,7 +392,7 @@ def append_batch_to_group_dict(times, batch, reservoir, asr, attribute, init, n_
     with torch.no_grad():
         # Forward pass
         feats = asr.modules.wav2vec2(wavs, wav_lens)
-    
+     
     if attribute == "age":
         for i in range(batch_size):
             if age[i] == '':
@@ -400,6 +400,7 @@ def append_batch_to_group_dict(times, batch, reservoir, asr, attribute, init, n_
             elif ((not init) and times < prev_times + n_diff) or (init and times < reservoir.size):
                 reservoir.group_dict[age[i]][i_d[i]] = Sample(i_d[i],
                                                             duration[i].item(), 
+                                                            age[i], 
                                                             gender[i], 
                                                             accents[i], 
                                                             feats[i],
@@ -515,12 +516,14 @@ def random_subset_of_dict(dictionary, n_size):
     new_dict = dictionary
     random_choices = random.sample(dictionary.keys(), k=n_size)
 
-    for key in dictionary.keys():
+    for key in list(dictionary.keys()):
         if key not in random_choices:
-            new_dict.pop(key)
+            #new_dict.pop(key)
+            del new_dict[key]
     
     return new_dict
     
+
 
 def find_min_dist_sample_in_majority_group(reservoir, n_diff, asr):
     
@@ -594,9 +597,13 @@ def find_min_dist_sample_in_majority_group(reservoir, n_diff, asr):
 
     prob_list_ = list()
     
-    random_choices = list(WeightedRandomSampler(weights=prob_list,
-                                                num_samples=n_diff,
-                                                replacement=False))
+
+    try:
+        random_choices = list(WeightedRandomSampler(weights=prob_list,
+                                                    num_samples=n_diff,
+                                                    replacement=False))
+    except:
+        random_choices = np.random.choice(len(prob_list), n_diff, replace=False)
 
     selected_id = list()
     selected_object = list()
@@ -639,6 +646,7 @@ def find_min_dist_sample_in_majority_group(reservoir, n_diff, asr):
     
     return selected_id, selected_object
     
+
 def find_min_dist_sample_in_majority_group2(reservoir, n_diff, asr):
     
     majority_group_dict = reservoir.group_dict[reservoir.majority_group]
@@ -710,12 +718,18 @@ def find_min_dist_sample_in_majority_group2(reservoir, n_diff, asr):
 
     prob_list_ = list()
     
-    random_choices = list(WeightedRandomSampler(weights=prob_list,
-                                                num_samples=n_diff,
-                                                replacement=False))
+    try:
+        random_choices = list(WeightedRandomSampler(weights=prob_list,
+                                                    num_samples=n_diff,
+                                                    replacement=False))
+    except:
+        random_choices = np.random.choice(len(prob_list), n_diff, replace=False)
 
     selected_id = list()
     selected_object = list()
+    
+    if len(random_choices) == 0:
+        return None, None
     
     for i in random_choices:
         selected_id.append(id_list[i])
@@ -754,9 +768,10 @@ def find_min_dist_sample_in_majority_group2(reservoir, n_diff, asr):
     
     
     return selected_id, selected_object
-
-
-
+    
+    
+    
+    
 def entropy_based_data_selection(asr, size, attribute, train_loader, csv_file):
     """
     size: Reservoir size
@@ -849,6 +864,10 @@ def entropy_based_data_selection(asr, size, attribute, train_loader, csv_file):
     
 
 def wandb_log(reservoir):
+    #wandb.log({"female" : reservoir.count_k_i["male"]})
+    #wandb.log({"male" : reservoir.count_k_i["female"]})
+    #wandb.log({"other" : reservoir.count_k_i["other"]})
+	
     wandb.log({"teens" : reservoir.count_k_i["teens"]})
     wandb.log({"twenties" : reservoir.count_k_i["twenties"]})
     wandb.log({"thrities" : reservoir.count_k_i["thirties"]})
@@ -938,6 +957,7 @@ if __name__ == "__main__":
     train_data, valid_data, test_data = dataio_prepare(hparams, tokenizer)
 
 
+
     # Trainer initialization
     asr_brain = ASR(
         modules=hparams["modules"],
@@ -950,14 +970,15 @@ if __name__ == "__main__":
     asr_brain.tokenizer = tokenizer
     asr_brain.lr_annealing_model = lr_annealing_model
     
-
+    
+    
     
     train_loader = asr_brain.make_dataloader(train_data, 
                                              stage=sb.Stage.TRAIN, 
                                              **hparams["dataloader_options"])
     
     size = 10000
-    attribute = "age"
+    attribute = hparams["attribute"]
     csv_file = hparams["selected_sample_csv"]
     
     
@@ -965,6 +986,9 @@ if __name__ == "__main__":
     
     
     print("end of main")
+    
+    
+
     
     
 

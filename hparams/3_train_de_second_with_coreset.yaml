@@ -3,9 +3,9 @@
 # ################################
 
 # Seed needs to be set at top of yaml, before objects with parameters are made
-seed: 42
+seed: 6006
 __set_seed: !apply:torch.manual_seed [!ref <seed>]
-output_folder: !ref /result/hubert_ctc_en_then_de/de/<seed>
+output_folder: !ref /result/hubert_ctc_en_then_de/de/<seed> # /home/CVoice_hubert_ctc/result/hubert_ctc_en_then_de/de/<seed>
 test_wer_file: !ref <output_folder>/wer_test.txt
 save_folder: !ref <output_folder>/save
 train_log: !ref <output_folder>/train_log.txt
@@ -19,7 +19,7 @@ wav2vec2_hub: facebook/hubert-base-ls960
 wav2vec2_folder: !ref <save_folder>/hubert_checkpoint
 
 # Dataset prep parameters
-data_folder: /data/cv-corpus-15.0-2023-09-08/de # /data/cv-corpus-15.0-2023-09-08/de
+data_folder: /data/cv-corpus-15.0-2023-09-08/de
 train_tsv_file: !ref <data_folder>/train.tsv
 dev_tsv_file: !ref <data_folder>/dev.tsv
 test_tsv_file: !ref <data_folder>/test.tsv
@@ -28,7 +28,7 @@ language: de ####################################
 train_csv: !ref <save_folder>/train.csv
 valid_csv: !ref <save_folder>/dev.csv
 test_csv: !ref <save_folder>/test.csv
-skip_prep: False
+skip_prep: True
 
 
 # We remove utterance slonger than 10s in the train/dev/test sets as
@@ -80,14 +80,14 @@ freeze_wav2vec: False # update transformer
 freeze_feature_extractor: True # freeze feature extractor
 dropout: 0.15
 
-total_step: 218550  #17484 * 50 epoch / 4 grad_accumulation
-tenth_step: 21855   # scheduler warmup steps
-half_step: 109275
-eighth_step: 27318
+total_step: 222450  # 17796 * 50 epoch / 4 grad_accumulation
+tenth_step: 22245   # scheduler warmup steps
+half_step: 111225
+eighth_step: 27806
 warmup_steps: !ref <half_step> # do not update optimizer
 freeze_steps: !ref <eighth_step> # only update linear layer
 
-anneal_rate: 0.99997258575
+anneal_rate: 0.99997306638
 
 tenth_epoch: 5
 half_epoch: 25
@@ -208,7 +208,6 @@ checkpointer: !new:speechbrain.utils.checkpoints.Checkpointer
   recoverables:
     wav2vec2: !ref <wav2vec2>
     model: !ref <model>
-    #scheduler_model: !ref <lr_annealing_model>
     counter: !ref <epoch_counter>
 
 train_logger: !new:speechbrain.utils.train_logger.FileTrainLogger

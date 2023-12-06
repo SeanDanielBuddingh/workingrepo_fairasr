@@ -1,4 +1,34 @@
 #!/usr/bin/env python3
+"""
+Run below commands to use LM:
+these needs to be saved in the 'seed/save' folder.
+
+
+import gzip
+import os, shutil, wget
+
+lm_gzip_path = '3-gram.pruned.1e-7.arpa.gz'
+if not os.path.exists(lm_gzip_path):
+    print('Downloading pruned 3-gram model.')
+    lm_url = 'http://www.openslr.org/resources/11/3-gram.pruned.1e-7.arpa.gz'
+    lm_gzip_path = wget.download(lm_url)
+    print('Downloaded the 3-gram language model.')
+else:
+    print('Pruned .arpa.gz already exists.')
+
+uppercase_lm_path = '3-gram.pruned.1e-7.arpa'
+if not os.path.exists(uppercase_lm_path):
+    with gzip.open(lm_gzip_path, 'rb') as f_zipped:
+        with open(uppercase_lm_path, 'wb') as f_unzipped:
+            shutil.copyfileobj(f_zipped, f_unzipped)
+    print('Unzipped the 3-gram language model.')
+else:
+    print('Unzipped .arpa already exists.')
+
+!wget http://www.openslr.org/resources/11/librispeech-vocab.txt
+
+"""
+
 import sys
 import torch
 import logging
@@ -13,10 +43,12 @@ import yaml
 import sentencepiece as spm
 import wandb
 from mySchedulers import MyIntervalScheduler
-#from speechbrain.tokenizers.SentencePiece import SentencePiece
-#from pyctcdecode import build_ctcdecoder
+from pyctcdecode import build_ctcdecoder
 
 logger = logging.getLogger(__name__)
+
+
+# Define training procedure
 
 class ASR(sb.core.Brain):
     def compute_forward(self, batch, stage):
@@ -49,15 +81,15 @@ class ASR(sb.core.Brain):
         tokens, tokens_lens = batch.tokens
 
         loss = self.hparams.ctc_cost(p_ctc, tokens, wav_lens, tokens_lens)
-
-        if stage == sb.Stage.TEST:
+        
+        if stage != sb.Stage.TRAIN:
             # Decode token terms to words
 
-            sequence = sb.decoders.ctc_greedy_decode(
-                p_ctc, wav_lens, blank_id=-1
-            )
+            #sequence = sb.decoders.ctc_greedy_decode(
+            #    p_ctc, wav_lens, blank_id=-1
+            #)
             
-            """
+            
             # Beam Search Decoding
                 
             p_ctc = p_ctc.detach().cpu().numpy()
@@ -65,28 +97,33 @@ class ASR(sb.core.Brain):
                                                              beam_width=self.hparams.beam_size)
             # pool: multiprocessing pool for parallel execution
 
-            """
+            
             
             predicted_words = self.tokenizer(sequence, task="decode_from_list")
-
+            
             
             # Convert indices to words
             target_words = undo_padding(tokens, tokens_lens)
             target_words = self.tokenizer(target_words, task="decode_from_list")
             
             
-            """
+            
             # Print at Validation stage
             
-            print("target / greedy predicted words:\n")
+            #print("target / greedy predicted words:\n")
             for i in range(2):
                 print(target_words[i])
                 print(predicted_words[i])
+                print(sequence[i])
                 print("\n\n")
-            """
+            
 
             self.wer_metric.append(ids, predicted_words, target_words)
             self.cer_metric.append(ids, predicted_words, target_words)
+            
+            stats = self.wer_metric.summarize()
+            print(stats['WER'])
+            print("\n\n")
 
         return loss
 
@@ -182,21 +219,16 @@ class ASR(sb.core.Brain):
         # after each step (after accumulated enough gradient and finally updated optimizer)
         if should_step:
             
-            old_lr, new_lr = self.lr_annealing_model(
-                    self.optimizer_step, self.model_optimizer
-                )
-
+            old_lr, new_lr = self.hparams.lr_annealing_model_Noam(
+                    self.model_optimizer
+            )
+            
             sb.nnet.schedulers.update_learning_rate(
                     self.model_optimizer, new_lr
                 )
             
-            wandb.log({"Learning rate": old_lr})
-            
-            #self.hparams.train_logger.log_stats(
-            #    stats_meta={
-            #        "lr_model": old_lr,
-            #    }
-            #)
+            #print("lr : ", new_lr)
+
         
     
     def evaluate_batch(self, batch, stage):
@@ -208,13 +240,7 @@ class ASR(sb.core.Brain):
 
     def on_stage_start(self, stage, epoch):
         """Gets called at the beginning of each epoch"""
-
-        #self.epoch = epoch
-        if epoch == 51:
-            self.optimizer_step = 0
-            self.model_optimizer.param_groups[0]["lr"] = 0.0 
-            
-        if stage == sb.Stage.TEST:
+        if stage != sb.Stage.TRAIN:
             self.cer_metric = self.hparams.cer_computer()
             self.wer_metric = self.hparams.error_rate_computer()
     
@@ -224,7 +250,7 @@ class ASR(sb.core.Brain):
         stage_stats = {"loss": stage_loss}
         if stage == sb.Stage.TRAIN:
             self.train_stats = stage_stats
-        elif stage == sb.Stage.TEST:
+        else:
             stage_stats["CER"] = self.cer_metric.summarize("error_rate")
             stage_stats["WER"] = self.wer_metric.summarize("error_rate")
 
@@ -238,9 +264,9 @@ class ASR(sb.core.Brain):
                 train_stats=self.train_stats,
                 valid_stats=stage_stats,
             )
-            #self.checkpointer.save_and_keep_only(
-            #    meta={"WER": stage_stats["WER"]}, min_keys=["WER"],
-            #)
+            self.checkpointer.save_and_keep_only(
+                meta={"WER": stage_stats["WER"]}, min_keys=["WER"],
+            )
             
             ckpt_name = "_END OF EPOCH_" + str(epoch)
             self.checkpointer.save_checkpoint(name = ckpt_name)
@@ -264,8 +290,6 @@ class ASR(sb.core.Brain):
 
         if self.checkpointer is not None:
             self.checkpointer.add_recoverable("modelopt", self.model_optimizer)
-            
-        #self.model_optimizer.lr = 0.0        
             
     def zero_grad(self, set_to_none=False):
         self.model_optimizer.zero_grad(set_to_none)
@@ -368,9 +392,10 @@ def dataio_prepare(hparams, tokenizer):
 
 if __name__ == "__main__":
 
-    wandb.init(project='Resume Training') # resume=True
+    #wandb.init(project='Train en')
+    #wandb.init(id="hopeful-plasma-1", resume=True)
     
-    #wandb.run.name = "YOUR RUN NAME"
+    #wandb.run.name = "First run"
     #wandb.run.save()
     
     # Load hyperparameters file with command-line overrides
@@ -388,7 +413,7 @@ if __name__ == "__main__":
         "num_workers": hparams["num_workers"]
     }
     
-    wandb.config.update(args)
+    #wandb.config.update(args)
    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.cuda.empty_cache()
@@ -440,11 +465,6 @@ if __name__ == "__main__":
 		eos_piece=hparams["eos_piece"], # <eos>
     )
    
-    # Defining scheduler 
-    lr_annealing_model = MyIntervalScheduler(lr_initial = hparams["peak_lr"],
-                                            n_warmup_steps = hparams["tenth_step"],
-                                            anneal_steps = hparams["half_step"],
-                                            anneal_rates = hparams["anneal_rate"])
     
     
     # Create the datasets objects as well as tokenization and encoding
@@ -461,23 +481,22 @@ if __name__ == "__main__":
     # Adding objects to trainer.
     asr_brain.tokenizer = tokenizer
     
-    asr_brain.lr_annealing_model = lr_annealing_model
     
     #asr_brain.checkpointer.add_recoverable("scheduler_model", asr_brain.lr_annealing_model)
 
 
-    """
-    For Beam-Search Decoding
+    
+    #For Beam-Search Decoding
     
     # specify alphabet labels as they appear in logits
     
     # The CTC target vocabulary includes 26 English characters, 
     # a space token (" "), an apostrophe ('), and a special CTC blank symbol (pad).
     
-    #labels = [" ", "<bos>", "<eos>", "<pad>", "<unk>", 
-    #          "E", "N", "I", "T", "A", "R", "S", "O", "H", "D",
-    #          "L", "U", "C", "M", "G", "F", "B", "W", "P", "Y",
-    #          "V", "K", "Z", "J", "X", "'", "Q"]
+    labels = [" ", "<bos>", "<eos>", "<pad>", "<unk>", 
+              "E", "A", "T", "I", "S", "O", "N", "R", "H", "L",
+              "D", "C", "U", "M", "F", "P", "G", "W", "Y", "B",
+              "V", "K", "X", "J", "'", "Z", "Q"]
 
     # tokenizer의 vocab 순서와 동일하게 하는 것 중요!!
     
@@ -488,10 +507,30 @@ if __name__ == "__main__":
     #unk_index: 4
     
     # vocab: 32 개 token : a~z (26개) + space, eos, bos, pad, unk (5개) + " ' " (1개)
+    
 
-    #asr_brain.beam_search_decoder = build_ctcdecoder(labels)            
+    uppercase_lm_path = asr_brain.hparams.save_folder + '/3-gram.pruned.1e-7.arpa'
+   
+    # load unigram list
+    with open(asr_brain.hparams.save_folder + "/librispeech-vocab.txt") as f:
+        unigram_list = [t.upper() for t in f.read().strip().split("\n")]
+        
 
+    asr_brain.beam_search_decoder = build_ctcdecoder(
+        labels = labels, #asr_model.decoder.vocabulary,
+        kenlm_model_path = uppercase_lm_path,
+        unigrams = unigram_list,
+        alpha = 0.7,
+        beta = 1.8,
+    )
     """
+    alpha: weight for language model during shallow fusion
+    beta: weight for length score adjustment of during scoring
+    
+    DEFAULT_ALPHA = 0.5
+    DEFAULT_BETA = 1.5
+    
+    """    
     
     asr_brain.fit(
         asr_brain.hparams.epoch_counter,
@@ -508,5 +547,7 @@ if __name__ == "__main__":
         min_key="WER",
         test_loader_kwargs=hparams["test_dataloader_options"],
     )
+    
+
     
     
