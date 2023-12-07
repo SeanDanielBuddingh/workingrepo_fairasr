@@ -190,7 +190,7 @@ class ASR(sb.core.Brain):
                     self.model_optimizer, new_lr
                 )
             
-            wandb.log({"Learning rate": old_lr})
+            #wandb.log({"Learning rate": old_lr})
             
             #self.hparams.train_logger.log_stats(
             #    stats_meta={
@@ -368,7 +368,7 @@ def dataio_prepare(hparams, tokenizer):
 
 if __name__ == "__main__":
 
-    wandb.init(project='Resume Training') # resume=True
+    #wandb.init(project='Resume Training') # resume=True
     
     #wandb.run.name = "YOUR RUN NAME"
     #wandb.run.save()
@@ -388,7 +388,7 @@ if __name__ == "__main__":
         "num_workers": hparams["num_workers"]
     }
     
-    wandb.config.update(args)
+    #wandb.config.update(args)
    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.cuda.empty_cache()
