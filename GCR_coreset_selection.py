@@ -521,18 +521,13 @@ def dataio_prepare(hparams, tokenizer):
 
     sb.dataio.dataset.add_dynamic_item(datasets, text_pipeline)
 
-    # experiment accent field
-    @sb.utils.data_pipeline.takes("accents")
-    @sb.utils.data_pipeline.provides("accents_field")
-    def accents_pipeline(accents):
-        return accents
-    sb.dataio.dataset.add_dynamic_item(datasets, accents_pipeline)
-
     # 4. Set output:
     sb.dataio.dataset.set_output_keys(
-        datasets, ["id", "sig", "tokens_bos", "tokens_eos", "tokens", "accents_field"],
+        datasets, ["id", "duration", "wav", "spk_id", "wrd", "age", "gender", "accents",
+                   "sig", "tokens"],
     )
     return train_data, valid_data, test_data
+    
     
     
 
